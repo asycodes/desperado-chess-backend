@@ -1,20 +1,17 @@
-package com.desperado.desperado_chess_backend.player;
-
-import com.desperado.desperado_chess_backend.room.Room;
+package com.desperado.desperado_chess_backend.room;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Entity 
-@Table(name="players")
-@Getter 
-@Setter 
-@NoArgsConstructor(access=AccessLevel.PROTECTED)
+@Entity
+@Table(name = "players")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Player {
-    @Id 
+
+    @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
@@ -25,14 +22,16 @@ public class Player {
     @Column(nullable = false)
     private Integer position;
 
-    @Column(nullable = false, length=24)
+    @Column(nullable = false, length = 24)
     private String name;
 
-    public Player(Room room, String name, Integer position){
+    public Player(Room room, String name, int position) {
         this.room = room;
         this.name = name;
         this.position = position;
-
     }
 
+    public boolean isHost() {
+        return position == 1;
+    }
 }
