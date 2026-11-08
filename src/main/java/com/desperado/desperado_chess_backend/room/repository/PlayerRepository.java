@@ -1,6 +1,9 @@
-package com.desperado.desperado_chess_backend.room;
+package com.desperado.desperado_chess_backend.room.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.desperado.desperado_chess_backend.room.entity.Player;
+import com.desperado.desperado_chess_backend.room.entity.Room;
 
 import java.util.List;
 

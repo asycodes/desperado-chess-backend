@@ -1,7 +1,15 @@
-package com.desperado.desperado_chess_backend.room;
+package com.desperado.desperado_chess_backend.room.service;
 
 import com.desperado.desperado_chess_backend.room.DTO.*;
+import com.desperado.desperado_chess_backend.room.entity.Player;
+import com.desperado.desperado_chess_backend.room.entity.Room;
+import com.desperado.desperado_chess_backend.room.event.RoomChangedEvent;
+import com.desperado.desperado_chess_backend.room.repository.PlayerRepository;
+import com.desperado.desperado_chess_backend.room.repository.RoomRepository;
+
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -120,4 +128,51 @@ public class RoomService {
         }
         return sb.toString();
     }
+
+
+
+    private final ApplicationEventPublisher eventPublisher; // org.springframework.context.ApplicationEventPublisher
+
+    private void publishRoomChanged(Room room) {
+        eventPublisher.publishEvent(new RoomChangedEvent(buildRoomResponse(room)));
+    }
+
+    private RoomResponse buildRoomResponse(Room room) {
+    List<PlayerResponse> players = playerRepository.findByRoomOrderByPositionAsc(room).stream()
+            .map(p -> new PlayerResponse(p.getId(), p.getName(), p.getPosition(), p.isBot(), p.isHost()))
+            .toList();
+    return new RoomResponse(room.getCode(), room.getMode(), room.isActive(), players);
+    }
+
+
+    private static final int MIN_PLAYERS = 2;
+    @Transactional
+    public RoomResponse startMatch(String code, StartMatchRequest request) {
+        Room room = findRoom(code);
+        requireHost(room, request.requesterId());
+
+        if (room.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Match already started");
+        }
+        if (playerRepository.findByRoomOrderByPositionAsc(room).size() < MIN_PLAYERS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Need at least " + MIN_PLAYERS + " players");
+        }
+
+        room.setMode(request.mode());
+        room.setActive(true);
+        // No save() call needed: see the note below.
+
+        RoomResponse response = buildRoomResponse(room);
+        eventPublisher.publishEvent(new RoomChangedEvent(response));
+        return response;
+    }
+
+    private void requireHost(Room room, Long requesterId) {
+        Player requester = playerRepository.findById(requesterId)
+                .filter(p -> p.getRoom().getId().equals(room.getId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not in this room"));
+        if (!requester.isHost()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can do this");
+        }
+}
 }

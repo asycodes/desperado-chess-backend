@@ -1,4 +1,4 @@
-package com.desperado.desperado_chess_backend.room;
+package com.desperado.desperado_chess_backend.room.entity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

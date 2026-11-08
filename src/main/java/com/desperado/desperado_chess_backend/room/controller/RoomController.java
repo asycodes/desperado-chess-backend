@@ -1,6 +1,8 @@
-package com.desperado.desperado_chess_backend.room;
+package com.desperado.desperado_chess_backend.room.controller;
 
 import com.desperado.desperado_chess_backend.room.DTO.*;
+import com.desperado.desperado_chess_backend.room.service.RoomService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -42,5 +44,10 @@ public class RoomController {
     @PostMapping("/{code}/bots")
     public ResponseEntity<PlayerResponse> addBot(@PathVariable String code, @Valid @RequestBody AddBotRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(roomService.addBot(code, request));
+    }
+
+    @PostMapping("/{code}/start")
+    public RoomResponse startMatch(@PathVariable String code, @Valid @RequestBody StartMatchRequest request) {
+        return roomService.startMatch(code, request);
     }
 }
