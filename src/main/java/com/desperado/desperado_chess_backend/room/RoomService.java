@@ -49,7 +49,7 @@ public class RoomService {
         }
 
         Player bot = takeSeat(room, nextBotName(room), true);
-        return new PlayerResponse(bot.getId(), bot.getName(), bot.getPosition(), bot.isBot(), bot.isHost());
+        return new PlayerResponse(bot.getId(), bot.getName(), bot.getPosition(), bot.isHost(),bot.isBot());
     }
 
     // Shared by humans and bots: all the seat rules live here, once.
