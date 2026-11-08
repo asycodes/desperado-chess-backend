@@ -26,15 +26,34 @@ public class RoomService {
     @Transactional
     public JoinRoomResponse createRoom(CreateRoomRequest request) {
         Room room = roomRepository.save(new Room(generateUniqueCode()));
-        Player host = playerRepository.save(new Player(room, request.nickname().trim(), 1));
+        Player host = playerRepository.save(new Player(room, request.nickname().trim(), 1, false));
         return new JoinRoomResponse(room.getCode(), host.getId());
-    }
-
+        }
     @Transactional
     public JoinRoomResponse joinRoom(String code, JoinRoomRequest request) {
         Room room = findRoom(code);
-        String name = request.nickname().trim();
+        Player player = takeSeat(room, request.nickname().trim(), false);
+        return new JoinRoomResponse(room.getCode(), player.getId());
+    }
 
+    @Transactional
+    public PlayerResponse addBot(String code, AddBotRequest request) {
+        Room room = findRoom(code);
+
+        Player requester = playerRepository.findById(request.requesterId())
+                .filter(p -> p.getRoom().getId().equals(room.getId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not in this room"));
+
+        if (!requester.isHost()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the host can add bots");
+        }
+
+        Player bot = takeSeat(room, nextBotName(room), true);
+        return new PlayerResponse(bot.getId(), bot.getName(), bot.getPosition(), bot.isBot(), bot.isHost());
+    }
+
+    // Shared by humans and bots: all the seat rules live here, once.
+    private Player takeSeat(Room room, String name, boolean isBot) {
         if (room.isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A match is in progress in this room");
         }
@@ -48,15 +67,23 @@ public class RoomService {
         }
 
         int position = firstFreePosition(players);
-        Player player = playerRepository.save(new Player(room, name, position));
-        return new JoinRoomResponse(room.getCode(), player.getId());
+        return playerRepository.save(new Player(room, name, position, isBot));
     }
 
+    private String nextBotName(Room room) {
+        for (int i = 1; i <= MAX_PLAYERS; i++) {
+            String candidate = "Bot " + i;
+            if (!playerRepository.existsByRoomAndNameIgnoreCase(room, candidate)) {
+                return candidate;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Room is full");
+    }
     @Transactional(readOnly = true)
     public RoomResponse getRoom(String code) {
         Room room = findRoom(code);
         List<PlayerResponse> players = playerRepository.findByRoomOrderByPositionAsc(room).stream()
-                .map(p -> new PlayerResponse(p.getId(), p.getName(), p.getPosition(), p.isHost()))
+                .map(p -> new PlayerResponse(p.getId(), p.getName(), p.getPosition(), p.isHost(), p.isBot()))
                 .toList();
         return new RoomResponse(room.getCode(), room.getMode(), room.isActive(), players);
     }

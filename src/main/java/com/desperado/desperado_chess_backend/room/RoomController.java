@@ -3,6 +3,8 @@ package com.desperado.desperado_chess_backend.room;
 import com.desperado.desperado_chess_backend.room.DTO.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,5 +37,10 @@ public class RoomController {
     @GetMapping("/{code}")
     public RoomResponse getRoom(@PathVariable String code) {
         return roomService.getRoom(code);
+    }
+
+    @PostMapping("/{code}/bots")
+    public ResponseEntity<PlayerResponse> addBot(@PathVariable String code, @Valid @RequestBody AddBotRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(roomService.addBot(code, request));
     }
 }

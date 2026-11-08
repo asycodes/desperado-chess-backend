@@ -25,10 +25,14 @@ public class Player {
     @Column(nullable = false, length = 24)
     private String name;
 
-    public Player(Room room, String name, int position) {
+    @Column(name = "is_bot", nullable = false)
+    private boolean isBot = false;
+
+    public Player(Room room, String name, int position, boolean isBot) {
         this.room = room;
         this.name = name;
         this.position = position;
+        this.isBot = isBot;
     }
 
     public boolean isHost() {

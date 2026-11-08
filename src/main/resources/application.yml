@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   datasource:
     url: jdbc:mysql://localhost:3307/${DB_NAME}
     username: ${DB_USER}
@@ -7,6 +9,9 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  web:
+    error:
+      include-message: always
   flyway:
     enabled: true
 
