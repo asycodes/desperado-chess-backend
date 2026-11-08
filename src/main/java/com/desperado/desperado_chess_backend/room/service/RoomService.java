@@ -41,6 +41,7 @@ public class RoomService {
     public JoinRoomResponse joinRoom(String code, JoinRoomRequest request) {
         Room room = findRoom(code);
         Player player = takeSeat(room, request.nickname().trim(), false);
+        publishRoomChanged(room);
         return new JoinRoomResponse(room.getCode(), player.getId());
     }
 
@@ -57,6 +58,7 @@ public class RoomService {
         }
 
         Player bot = takeSeat(room, nextBotName(room), true);
+        publishRoomChanged(room);
         return new PlayerResponse(bot.getId(), bot.getName(), bot.getPosition(), bot.isHost(),bot.isBot());
     }
 
@@ -139,7 +141,7 @@ public class RoomService {
 
     private RoomResponse buildRoomResponse(Room room) {
     List<PlayerResponse> players = playerRepository.findByRoomOrderByPositionAsc(room).stream()
-            .map(p -> new PlayerResponse(p.getId(), p.getName(), p.getPosition(), p.isBot(), p.isHost()))
+            .map(p -> new PlayerResponse(p.getId(), p.getName(), p.getPosition(), p.isHost(),p.isBot()))
             .toList();
     return new RoomResponse(room.getCode(), room.getMode(), room.isActive(), players);
     }
