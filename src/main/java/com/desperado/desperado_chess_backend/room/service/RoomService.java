@@ -1,5 +1,7 @@
 package com.desperado.desperado_chess_backend.room.service;
 
+import com.desperado.desperado_chess_backend.match.engine.Seat;
+import com.desperado.desperado_chess_backend.match.service.MatchService;
 import com.desperado.desperado_chess_backend.room.DTO.*;
 import com.desperado.desperado_chess_backend.room.entity.Player;
 import com.desperado.desperado_chess_backend.room.entity.Room;
@@ -29,6 +31,7 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final PlayerRepository playerRepository;
+    private final MatchService matchService;
     private final SecureRandom random = new SecureRandom();
 
     @Transactional
@@ -162,11 +165,21 @@ public class RoomService {
 
         room.setMode(request.mode());
         room.setActive(true);
-        // No save() call needed: see the note below.
+        List<Seat> seats = playerRepository.findByRoomOrderByPositionAsc(room).stream()
+        .map(p -> new Seat(p.getId(), p.getName(), p.getPosition(), p.isBot()))
+        .toList();
+        matchService.startMatch(room.getCode(), seats);
 
         RoomResponse response = buildRoomResponse(room);
         eventPublisher.publishEvent(new RoomChangedEvent(response));
         return response;
+    }
+
+    @Transactional
+    public void endMatch(String code) {
+        Room room = findRoom(code);
+        room.setActive(false);
+        publishRoomChanged(room);
     }
 
     private void requireHost(Room room, Long requesterId) {
