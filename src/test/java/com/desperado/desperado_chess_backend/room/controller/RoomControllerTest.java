@@ -22,7 +22,7 @@ import com.desperado.desperado_chess_backend.room.controller.RoomController;
 import com.desperado.desperado_chess_backend.room.service.RoomService;
 
 
-@WebMvcTest 
+@WebMvcTest(RoomController.class)
 public class RoomControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private RoomService roomService;

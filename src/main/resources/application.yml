@@ -23,11 +23,17 @@ management:
 
 desperado:
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
+  coach:
+    enabled: ${COACH_ENABLED:false}
+    url: ${COACH_URL:http://localhost:8000}
+    secret: ${COACH_SECRET:}
+    max-skew: 5m
   match:
-    length: 10m
+    length: 1m
     move-timeout: 60s
     bot-think-time: 2s
     bot-cooldown: 4s
 
 server:
   port: ${PORT:8080}
+

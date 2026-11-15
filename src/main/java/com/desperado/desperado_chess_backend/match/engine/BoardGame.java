@@ -8,7 +8,9 @@ import com.github.bhlangonijr.chesslib.move.Move;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class BoardGame {
@@ -20,13 +22,16 @@ public class BoardGame {
     private Instant turnStartedAt;
     private final Map<Long, Integer> pointsByPlayer = new HashMap<>();
 
+    private final List<GameRecord> finishedGames = new ArrayList<>();
+    private List<BoardEvent> currentEvents = new ArrayList<>();
+    private int gameNumber = 1;
+
     BoardGame(int id, long whiteId, long blackId, Instant now) {
         this.id = id;
         this.whiteId = whiteId;
         this.blackId = blackId;
         this.turnStartedAt = now;
     }
-
 
     public int getId() { return id; }
     public long getWhiteId() { return whiteId; }
@@ -55,6 +60,10 @@ public class BoardGame {
         return board.isKingAttacked();
     }
 
+    /** Milliseconds since the current turn started. */
+    long thinkMs(Instant now) {
+        return Duration.between(turnStartedAt, now).toMillis();
+    }
 
     /** Validates and plays a move in UCI notation (e.g. "e2e4", "e7e8q"). */
     MoveOutcome play(String uci, Instant now) {
@@ -75,7 +84,7 @@ public class BoardGame {
         if (target != Piece.NONE) {
             captured = target.getPieceType();
         } else if (moving.getPieceType() == PieceType.PAWN && move.getFrom().getFile() != move.getTo().getFile()) {
-            captured = PieceType.PAWN; //en passant
+            captured = PieceType.PAWN; // en passant
         }
 
         board.doMove(move);
@@ -95,8 +104,15 @@ public class BoardGame {
         turnStartedAt = now;
     }
 
-    /** After a checkmate or draw: a fresh game between the same two players, colours swapped. */
-    void restartWithSwappedColours(Instant now) {
+    /**
+     * After a checkmate or draw: closes the current game in the history with its result,
+     * then starts a fresh game between the same two players with colours swapped.
+     */
+    void restartWithSwappedColours(Instant now, GameRecord.Result result) {
+        finishedGames.add(new GameRecord(id, gameNumber, whiteId, blackId, result, List.copyOf(currentEvents)));
+        currentEvents = new ArrayList<>();
+        gameNumber++;
+
         long previousWhite = whiteId;
         whiteId = blackId;
         blackId = previousWhite;
@@ -106,5 +122,19 @@ public class BoardGame {
 
     void addPoints(long playerId, int points) {
         pointsByPlayer.merge(playerId, points, Integer::sum);
+    }
+
+    void record(BoardEvent event) {
+        currentEvents.add(event);
+    }
+
+    /** All games on this board, in order. The game still in progress is included as UNFINISHED. */
+    List<GameRecord> history() {
+        List<GameRecord> all = new ArrayList<>(finishedGames);
+        if (!currentEvents.isEmpty()) {
+            all.add(new GameRecord(id, gameNumber, whiteId, blackId,
+                    GameRecord.Result.UNFINISHED, List.copyOf(currentEvents)));
+        }
+        return all;
     }
 }

@@ -1,44 +1,49 @@
 package com.desperado.desperado_chess_backend.match.engine;
 
+import com.desperado.desperado_chess_backend.match.engine.bot.BotStrategy;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.Comparator;
-import com.desperado.desperado_chess_backend.match.engine.bot.BotStrategy;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
+import java.util.UUID;
 
 public class Match {
 
     public enum Status { RUNNING, FINISHED }
 
+    private final String matchId = UUID.randomUUID().toString();
     private final String roomCode;
     private final List<Seat> seats;
     private final List<BoardGame> boards;
     private final Map<Long, Integer> scores = new LinkedHashMap<>();
     private final Map<Long, Instant> botLastMoveAt = new HashMap<>();
+    private final Instant startedAt;
     private final Instant endsAt;
     private final Duration moveTimeout;
     private Status status = Status.RUNNING;
+    private boolean finishAnnounced = false;
 
-    private Match(String roomCode, List<Seat> seats, List<BoardGame> boards, Instant endsAt, Duration moveTimeout) {
+    private Match(String roomCode, List<Seat> seats, List<BoardGame> boards,
+                  Instant startedAt, Instant endsAt, Duration moveTimeout) {
         this.roomCode = roomCode;
         this.seats = List.copyOf(seats);
         this.boards = boards;
+        this.startedAt = startedAt;
         this.endsAt = endsAt;
         this.moveTimeout = moveTimeout;
         seats.forEach(s -> scores.put(s.playerId(), 0));
     }
 
     public boolean isBotSeat(long playerId) {
-    return seats.stream().anyMatch(s -> s.playerId() == playerId && s.bot());}
+        return seats.stream().anyMatch(s -> s.playerId() == playerId && s.bot());
+    }
 
-    /** Creates one board for every pair of players (round robin). */
+    //create board each player, round robin style
     public static Match start(String roomCode, List<Seat> seats, Instant now,
                               Duration matchLength, Duration moveTimeout) {
         if (seats.size() < 2 || seats.size() > 4) {
@@ -54,10 +59,10 @@ public class Match {
                 boards.add(new BoardGame(nextId++, white.playerId(), black.playerId(), now));
             }
         }
-        return new Match(roomCode, seats, boards, now.plus(matchLength), moveTimeout);
+        return new Match(roomCode, seats, boards, now, now.plus(matchLength), moveTimeout);
     }
 
-    // ---------- player actions ----------
+    //here are player related actions
 
     public synchronized MoveResult makeMove(long playerId, int boardId, String uci, Instant now) {
         if (finishIfDue(now) || status == Status.FINISHED) {
@@ -72,7 +77,10 @@ public class Match {
         }
 
         long opponent = board.opponentOf(playerId);
-        Long leader = leaderId(); // decided before the move changes any score
+        Long leader = leaderId(); //decided before the move changes any score
+        String fenBefore = board.getFen();
+        long thinkMs = board.thinkMs(now);
+        boolean moverIsWhite = playerId == board.getWhiteId();
 
         MoveOutcome outcome = board.play(uci, now);
 
@@ -92,13 +100,19 @@ public class Match {
             addScore(playerId, points);
             board.addPoints(playerId, points);
         }
-        if (outcome.checkmate() || outcome.drawn()) {
-            board.restartWithSwappedColours(now);
+
+        board.record(BoardEvent.move(playerId, fenBefore, uci.toLowerCase(), thinkMs,
+                outcome.captured() == null ? null : outcome.captured().name(),
+                points, bounty, outcome.checkmate(), now.toEpochMilli()));
+
+        if (outcome.checkmate()) {
+            board.restartWithSwappedColours(now,
+                    moverIsWhite ? GameRecord.Result.WHITE_WON : GameRecord.Result.BLACK_WON);
+        } else if (outcome.drawn()) {
+            board.restartWithSwappedColours(now, GameRecord.Result.DRAW);
         }
         return new MoveResult(points, bounty, outcome.checkmate());
     }
-
-    // ---------- time ----------
 
     /**
      * Called regularly by a scheduler. Handles move timeouts and the end of the match.
@@ -113,19 +127,28 @@ public class Match {
             if (!board.isTimedOut(now, moveTimeout)) continue;
 
             long stalledPlayer = board.playerToMove();
+            String fenBefore = board.getFen();
+            long thinkMs = board.thinkMs(now);
+
             if (board.sideToMoveInCheck()) {
-                // ran out of time while in check: counts as checkmate for the opponent
                 long winner = board.opponentOf(stalledPlayer);
+                boolean winnerIsWhite = winner == board.getWhiteId();
                 addScore(winner, PieceValues.CHECKMATE_BONUS);
                 board.addPoints(winner, PieceValues.CHECKMATE_BONUS);
-                board.restartWithSwappedColours(now);
+                board.record(BoardEvent.timeout(BoardEvent.Type.TIMEOUT_MATE, stalledPlayer, fenBefore,
+                        thinkMs, now.toEpochMilli()));
+                board.restartWithSwappedColours(now,
+                        winnerIsWhite ? GameRecord.Result.WHITE_WON : GameRecord.Result.BLACK_WON);
             } else {
+                board.record(BoardEvent.timeout(BoardEvent.Type.TIMEOUT_PASS, stalledPlayer, fenBefore,
+                        thinkMs, now.toEpochMilli()));
                 board.passTurn(now);
             }
             changed = true;
         }
         return changed;
     }
+
     /**
      * Plays bot turns at a human-like pace: each bot waits `thinkTime` after its turn starts on a board,
      * and makes at most one move per `cooldown` across ALL its boards (like a person switching boards).
@@ -154,7 +177,18 @@ public class Match {
         return changed;
     }
 
-    // ---------- reading ----------
+    /**
+     * True exactly once, the first time it's called after the match has finished, whichever path
+     * finished it (a tick, or a late move that hit the end time). Lets the caller announce the end once.
+     */
+    public synchronized boolean claimFinishAnnouncement() {
+        if (status == Status.FINISHED && !finishAnnounced) {
+            finishAnnounced = true;
+            return true;
+        }
+        return false;
+    }
+
 
     public synchronized MatchSnapshot snapshot() {
         Long leader = leaderId();
@@ -170,8 +204,21 @@ public class Match {
         return new MatchSnapshot(roomCode, status.name(), endsAt.toEpochMilli(), seatScores, boardStates);
     }
 
+    /** The full history of the match, for post-match analysis. */
+    public synchronized MatchRecord record() {
+        List<MatchRecord.PlayerRecord> players = seats.stream()
+                .map(s -> new MatchRecord.PlayerRecord(s.playerId(), s.name(), s.position(), s.bot(),
+                        scores.get(s.playerId())))
+                .toList();
+        List<GameRecord> games = boards.stream()
+                .flatMap(b -> b.history().stream())
+                .toList();
+        return new MatchRecord(matchId, roomCode, startedAt.toEpochMilli(), endsAt.toEpochMilli(), players, games);
+    }
+
     public synchronized Status getStatus() { return status; }
     public String getRoomCode() { return roomCode; }
+    public String getMatchId() { return matchId; }
 
     // ---------- internals ----------
 
