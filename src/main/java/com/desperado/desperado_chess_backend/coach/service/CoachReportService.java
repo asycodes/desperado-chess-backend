@@ -1,4 +1,4 @@
-package com.desperado.desperado_chess_backend.coach;
+package com.desperado.desperado_chess_backend.coach.service;
 
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;

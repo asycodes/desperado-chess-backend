@@ -1,4 +1,4 @@
-package com.desperado.desperado_chess_backend.coach;
+package com.desperado.desperado_chess_backend.coach.controller;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +10,11 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.desperado.desperado_chess_backend.coach.WebhookSigner;
+import com.desperado.desperado_chess_backend.coach.service.CoachReportService;
+import com.desperado.desperado_chess_backend.coach.service.CoachReportService.View;
+
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
