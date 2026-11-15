@@ -1,5 +1,6 @@
 package com.desperado.desperado_chess_backend.room.service;
 
+import com.desperado.desperado_chess_backend.match.service.MatchService;
 import com.desperado.desperado_chess_backend.room.DTO.*;
 import com.desperado.desperado_chess_backend.room.entity.Player;
 import com.desperado.desperado_chess_backend.room.entity.Room;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.when;
 class RoomServiceTest {
 
     @Mock private RoomRepository roomRepository;
+    @Mock MatchService matchService;
     @Mock private PlayerRepository playerRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private RoomService roomService;

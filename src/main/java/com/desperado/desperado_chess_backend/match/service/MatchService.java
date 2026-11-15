@@ -1,6 +1,7 @@
 package com.desperado.desperado_chess_backend.match.service;
 
 import com.desperado.desperado_chess_backend.match.engine.Match;
+import com.desperado.desperado_chess_backend.match.engine.MatchRecord;
 import com.desperado.desperado_chess_backend.match.engine.MatchSnapshot;
 import com.desperado.desperado_chess_backend.match.engine.MoveResult;
 import com.desperado.desperado_chess_backend.match.engine.Seat;
@@ -42,7 +43,6 @@ public class MatchService {
     private final Duration botThinkTime;
     private final Duration botCooldown;
 
-
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "match-ticker");
         thread.setDaemon(true);
@@ -77,7 +77,6 @@ public class MatchService {
         scheduler.shutdownNow();
     }
 
-
     public MatchSnapshot startMatch(String roomCode, List<Seat> seats) {
         Match match = Match.start(roomCode, seats, clock.instant(), matchLength, moveTimeout);
         Match existing = matches.putIfAbsent(roomCode, match);
@@ -85,7 +84,7 @@ public class MatchService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "A match is already running in this room");
         }
         if (existing != null) {
-            matches.put(roomCode, match); // replace a finished match (rematch)
+            matches.put(roomCode, match);
         }
         MatchSnapshot snapshot = match.snapshot();
         broadcast(snapshot);
@@ -94,6 +93,11 @@ public class MatchService {
 
     public MatchSnapshot getSnapshot(String roomCode) {
         return findMatch(roomCode).snapshot();
+    }
+
+    //so the ai coach agent can view the match records and do its analysis
+    public MatchRecord getRecord(String roomCode) {
+        return findMatch(roomCode).record();
     }
 
     public MoveResult makeMove(String roomCode, long playerId, int boardId, String uci) {
@@ -106,27 +110,29 @@ public class MatchService {
         return result;
     }
 
-    // CLOCK STUFF
+    // ---------- clock ----------
 
     void tickAll() {
         for (Match match : matches.values()) {
             try {
-                Match.Status before = match.getStatus();
                 Instant now = clock.instant();
                 boolean changed = match.tick(now) | match.playBots(now, botStrategy, botThinkTime, botCooldown);
-                if (changed) {
+
+                // true exactly once per match, however it finished (a tick, or a late move after the end time).
+                //publish BEFORE broadcasting, so listeners (like room reset, coach "analysing" state) are ready
+                //by the time clients see FINISHED.
+                boolean justFinished = match.claimFinishAnnouncement();
+                if (justFinished) {
+                    events.publishEvent(new MatchFinishedEvent(match.getRoomCode()));
+                }
+                if (changed || justFinished) {
                     broadcast(match.snapshot());
-                    if (before == Match.Status.RUNNING && match.getStatus() == Match.Status.FINISHED) {
-                        events.publishEvent(new MatchFinishedEvent(match.getRoomCode()));
-                    }
                 }
             } catch (Exception e) {
-                // Never let an exception escape, it would cancel all future ticks.
                 log.error("Tick failed for match {}", match.getRoomCode(), e);
             }
         }
     }
-
 
     private Match findMatch(String roomCode) {
         Match match = matches.get(roomCode.toUpperCase());
