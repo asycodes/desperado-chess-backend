@@ -29,7 +29,7 @@ desperado:
     secret: ${COACH_SECRET:}
     max-skew: 5m
   match:
-    length: 1m
+    length: 10m
     move-timeout: 60s
     bot-think-time: 2s
     bot-cooldown: 4s
